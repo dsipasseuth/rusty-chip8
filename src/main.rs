@@ -1,10 +1,11 @@
 mod chip8;
+mod errors;
+mod keypad;
+
 use std::env;
 use std::fs;
 
 use crate::chip8::Chip8;
-use ratatui::crossterm::event;
-use ratatui::crossterm::event::{Event, KeyCode};
 use ratatui::symbols::Marker;
 use ratatui::{
     crossterm::{
@@ -28,11 +29,15 @@ fn main() -> io::Result<()> {
 
     let mut terminal = init_terminal()?;
 
+    let mut keypad_state = [false; 16];
+
     // pooling time.
     let mut last_tick = Instant::now();
+    // 60hz
     let tick_rate = Duration::from_millis(16);
 
     let mut vm = chip8::init();
+
     vm.load(contents);
     loop {
         let timeout = tick_rate.saturating_sub(last_tick.elapsed());
@@ -48,18 +53,15 @@ fn main() -> io::Result<()> {
 
         // perform one cycle
         if last_tick.elapsed() >= tick_rate {
-            vm.cycle();
+            match keypad::read_keypad_state(timeout) {
+                Err(_) => break,
+                Ok(new_state) => keypad_state = new_state,
+            }
+            if let Err(error) = vm.cycle(keypad_state) {
+                panic!("something wrong happened, {:?}", error)
+            }
             last_tick = Instant::now();
         }
-        if event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('q') => break,
-                    _ => {}
-                }
-            }
-        }
-        vm.set_keys();
     }
     restore_terminal()
 }
@@ -98,7 +100,9 @@ fn as_canvas(vm: &Chip8) -> impl Widget {
 }
 
 fn as_instruction() -> impl Widget {
-    Paragraph::new("Press 'q' to quit").white().on_blue()
+    Paragraph::new(format!("Press 'p' to quit."))
+        .black()
+        .on_white()
 }
 
 fn init_terminal() -> io::Result<Terminal<CrosstermBackend<Stdout>>> {

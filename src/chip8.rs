@@ -1,3 +1,5 @@
+use crate::errors::EmulationError;
+use crate::errors::EmulationError::UnknownOpcode;
 use rand::Rng;
 
 pub struct Chip8 {
@@ -14,7 +16,6 @@ pub struct Chip8 {
     delay_timer: u8,
     sound_timer: u8,
     stack: Vec<u16>,
-    keys: [bool; 16],
     draw_flag: bool,
     rng: rand::prelude::ThreadRng,
 }
@@ -28,8 +29,6 @@ impl Chip8 {
         }
         println!("Rom Loaded into memory");
     }
-
-    pub fn set_keys(&mut self) {}
 
     pub fn get_gfx(&self) -> [bool; 2048] {
         self.gfx
@@ -110,7 +109,7 @@ impl Chip8 {
             self.memory[self.memory_index as usize + reg_max as usize];
     }
 
-    pub fn cycle(&mut self) {
+    pub fn cycle(&mut self, keypad: [bool; 16]) -> Result<u16, EmulationError> {
         // Fetch Opcode
         self.op_code = self.read_op_code();
         // Decode Opcode
@@ -124,7 +123,7 @@ impl Chip8 {
                 0x00EE => {
                     self.program_counter = self.stack.pop().unwrap();
                 }
-                _ => println!("Call RCA 1082"),
+                _ => return Err(UnknownOpcode(self.op_code)),
             },
             0x1000 => self.set_program_counter(self.op_code & 0x0FFF),
             0x2000 => self.call_at(self.op_code & 0x0FFF),
@@ -173,7 +172,7 @@ impl Chip8 {
                         self.write_vx(result);
                     }
                     0x000E => self.register[0xF] = self.read_vx() << 1,
-                    _ => println!("Something wrong"),
+                    _ => return Err(UnknownOpcode(self.op_code)),
                 };
                 self.increase_program_counter();
             }
@@ -205,15 +204,15 @@ impl Chip8 {
             0xE000 => match self.op_code & 0x00FF {
                 0x009E => {
                     let key = self.read_vx() as usize;
-                    self.increase_program_counter_if(self.keys[key]);
+                    self.increase_program_counter_if(keypad[key]);
                     self.increase_program_counter();
                 }
                 0x00A1 => {
                     let key = self.read_vx() as usize;
-                    self.increase_program_counter_if(self.keys[key]);
+                    self.increase_program_counter_if(keypad[key]);
                     self.increase_program_counter();
                 }
-                _ => println!("Unkonwn op code"),
+                _ => return Err(UnknownOpcode(self.op_code)),
             },
             0xF000 => {
                 match self.op_code & 0x00FF {
@@ -222,6 +221,12 @@ impl Chip8 {
                     }
                     0x000A => {
                         // Lock until key press
+                        if keypad.iter().any(|&key| key) {
+                            self.increase_program_counter();
+                        } else {
+                            // end cycle, it will go back here to check on next cycle.
+                            return Ok(self.op_code);
+                        }
                     }
                     0x0015 => {
                         self.delay_timer = self.read_vx();
@@ -243,11 +248,13 @@ impl Chip8 {
                 };
                 self.increase_program_counter();
             }
-            _ => println!("Haha!"),
-        }
+            _ => return Err(UnknownOpcode(self.op_code)),
+        };
         // Execute Opcode
 
         // Update timers
+
+        return Ok(self.op_code);
     }
 
     pub fn draw_flag(&mut self) -> bool {
@@ -287,7 +294,6 @@ pub fn init() -> Chip8 {
         delay_timer: 0,
         sound_timer: 0,
         stack: Vec::new(),
-        keys: [false; 16],
         draw_flag: false,
         rng: rand::thread_rng(),
     };

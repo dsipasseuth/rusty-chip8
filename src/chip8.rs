@@ -2,22 +2,22 @@ use crate::errors::EmulationError;
 use crate::errors::EmulationError::UnknownOpcode;
 use rand::Rng;
 
-pub struct Chip8 {
-    op_code: u16,
+pub(crate) struct Chip8 {
+    pub op_code: u16,
     // also named PC
     // This is where to read the op code in memory
-    program_counter: u16,
-    memory: [u8; 4096],
+    pub program_counter: u16,
+    pub memory: [u8; 4096],
     // also named V
-    register: [u8; 16],
-    memory_index: u16, // also named I
+    pub register: [u8; 16],
+    pub memory_index: u16, // also named I
     // 64x32 pixel
-    gfx: [bool; 2048],
-    delay_timer: u8,
-    sound_timer: u8,
-    stack: Vec<u16>,
-    draw_flag: bool,
-    rng: rand::prelude::ThreadRng,
+    pub gfx: [bool; 2048],
+    pub delay_timer: u8,
+    pub sound_timer: u8,
+    pub stack: Vec<u16>,
+    pub draw_flag: bool,
+    pub rng: rand::prelude::ThreadRng,
 }
 
 impl Chip8 {
@@ -28,10 +28,6 @@ impl Chip8 {
             i = i + 1;
         }
         println!("Rom Loaded into memory");
-    }
-
-    pub fn get_gfx(&self) -> [bool; 2048] {
-        self.gfx
     }
 
     fn read_op_code(&self) -> u16 {
@@ -220,12 +216,9 @@ impl Chip8 {
                         self.write_vx(self.delay_timer);
                     }
                     0x000A => {
-                        // Lock until key press
+                        // Increase counter only if key press
                         if keypad.iter().any(|&key| key) {
                             self.increase_program_counter();
-                        } else {
-                            // end cycle, it will go back here to check on next cycle.
-                            return Ok(self.op_code);
                         }
                     }
                     0x0015 => {
@@ -253,37 +246,43 @@ impl Chip8 {
         // Execute Opcode
 
         // Update timers
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1;
+        }
+        if self.sound_timer > 0 {
+            self.sound_timer -= 1;
+        }
 
-        return Ok(self.op_code);
-    }
-
-    pub fn draw_flag(&mut self) -> bool {
-        self.draw_flag
+        Ok(self.op_code)
     }
 }
+
+/**
+ * Initial sprite data.
+ */
+const FONTS_SET: [u8; 80] = [
+    0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+    0x20, 0x60, 0x20, 0x20, 0x70, // 1
+    0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+    0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+    0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+    0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+    0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+    0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+    0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+    0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+    0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+    0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+    0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+    0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+    0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+    0xF0, 0x80, 0xF0, 0x80, 0x80, // F
+];
 
 pub fn init() -> Chip8 {
     println!("Rusty Chip8 initialized!");
     let mut init_memory = [0; 4096];
-    let fontset = [
-        0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
-        0x20, 0x60, 0x20, 0x20, 0x70, // 1
-        0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
-        0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
-        0x90, 0x90, 0xF0, 0x10, 0x10, // 4
-        0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
-        0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
-        0xF0, 0x10, 0x20, 0x40, 0x40, // 7
-        0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
-        0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
-        0xF0, 0x90, 0xF0, 0x90, 0x90, // A
-        0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
-        0xF0, 0x80, 0x80, 0x80, 0xF0, // C
-        0xE0, 0x90, 0x90, 0x90, 0xE0, // D
-        0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-        0xF0, 0x80, 0xF0, 0x80, 0x80, // F
-    ];
-    init_memory[..80].clone_from_slice(&fontset);
+    init_memory[..80].clone_from_slice(&FONTS_SET);
     return Chip8 {
         op_code: 0,
         memory: init_memory,

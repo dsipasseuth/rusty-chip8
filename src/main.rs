@@ -29,10 +29,11 @@ fn main() -> io::Result<()> {
 
     let mut terminal = init_terminal()?;
 
-    let mut keypad_state = [false; 16];
+    let mut keypad_state ;
 
     // pooling time.
     let mut last_tick = Instant::now();
+
     // 60hz
     let tick_rate = Duration::from_millis(16);
 
@@ -42,7 +43,7 @@ fn main() -> io::Result<()> {
     loop {
         let timeout = tick_rate.saturating_sub(last_tick.elapsed());
         let _ = terminal.draw(|frame| {
-            if vm.draw_flag() {
+            if vm.draw_flag {
                 let vertical_layout =
                     Layout::vertical([Constraint::Percentage(90), Constraint::Percentage(10)]);
                 let [top, bottom] = vertical_layout.areas(frame.area());
@@ -70,8 +71,8 @@ fn as_points(vm: &Chip8) -> Vec<(f64, f64)> {
     let mut y_axis = 0f64;
     let mut x_axis = 0f64;
     let mut breakline = 0;
-    let mut coords = Vec::new();
-    for pixel in vm.get_gfx() {
+    let mut coords = vec![];
+    for pixel in vm.gfx {
         if pixel {
             coords.push((x_axis, y_axis))
         }
@@ -90,7 +91,7 @@ fn as_canvas(vm: &Chip8) -> impl Widget {
         .block(Block::bordered().title("Screen"))
         .marker(Marker::Block)
         .x_bounds([0.0, 64.0])
-        .y_bounds([0.0, 64.0])
+        .y_bounds([0.0, 32.0])
         .paint(move |ctx| {
             ctx.draw(&Points {
                 coords: &coords,

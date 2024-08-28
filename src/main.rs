@@ -48,9 +48,9 @@ fn main() -> io::Result<()> {
         let timeout = tick_rate.saturating_sub(last_tick.elapsed());
         let _ = terminal.draw(|frame| {
             let [top, bottom] =
-                Layout::vertical([Constraint::Length(32), Constraint::Fill(1)]).areas(frame.area());
+                Layout::vertical([Constraint::Percentage(70), Constraint::Fill(1)]).areas(frame.area());
             let [top_left, top_right] =
-                Layout::horizontal([Constraint::Length(64), Constraint::Fill(1)]).areas(top);
+                Layout::horizontal([Constraint::Percentage(35), Constraint::Fill(1)]).areas(top);
             frame.render_widget(as_canvas(&vm), top_left);
             frame.render_widget(as_debug(&vm), top_right);
             frame.render_widget(as_instruction(), bottom);
@@ -126,15 +126,11 @@ fn as_debug(vm: &Chip8) -> impl Widget {
     });
     Paragraph::new(content)
         .block(Block::bordered().title("Debug Logs"))
-        .black()
-        .on_white()
 }
 
 fn as_instruction() -> impl Widget {
     Paragraph::new("Press 'p' to quit.")
         .block(Block::bordered().title("Instructions"))
-        .black()
-        .on_white()
 }
 
 fn init_terminal() -> io::Result<Terminal<CrosstermBackend<Stdout>>> {

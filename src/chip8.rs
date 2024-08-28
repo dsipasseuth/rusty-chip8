@@ -102,10 +102,6 @@ impl Chip8 {
     fn write_vx(&mut self, value: u8) {
         let register_index = ((self.op_code & 0x0F00) >> 8) as usize;
         self.register[register_index] = value;
-        self.log(format!(
-            "[deep_debug]: write register register[{}] = {}",
-            register_index, value
-        ));
     }
 
     // Register Y if available is always located at the same position in opcode.
@@ -150,9 +146,8 @@ impl Chip8 {
                         (x as usize + x_col as usize + (y as usize + y_row as usize) * 64) % 2048;
                     if self.gfx[gfx_loc] == true {
                         self.write_vf(1)
-                    } else {
-                        self.gfx[gfx_loc] ^= true
                     }
+                    self.gfx[gfx_loc] ^= true
                 }
             }
         }

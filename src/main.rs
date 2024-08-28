@@ -16,11 +16,12 @@ use ratatui::{
     widgets::{canvas::*, *},
 };
 
+use ratatui::layout::Flex;
+use std::ops::Add;
 use std::{
     io::{self, stdout, Stdout},
     time::{Duration, Instant},
 };
-use ratatui::layout::Flex;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -30,7 +31,7 @@ fn main() -> io::Result<()> {
 
     let mut terminal = init_terminal()?;
 
-    let mut keypad_state ;
+    let mut keypad_state;
 
     // pooling time.
     let mut last_tick = Instant::now();
@@ -48,9 +49,12 @@ fn main() -> io::Result<()> {
                 let vertical_layout =
                     Layout::vertical([Constraint::Percentage(80), Constraint::Percentage(20)]);
                 let [top, bottom] = vertical_layout.areas(frame.area());
-                let centered_top = center(top, Constraint::Length(64), Constraint::Length(32));
-                frame.render_widget(as_canvas(&vm), centered_top);
-                frame.render_widget(as_instruction(&vm), bottom);
+                let [top_left, top_right] =
+                    Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
+                        .areas(top);
+                frame.render_widget(as_canvas(&vm), top_left);
+                frame.render_widget(as_debug(&vm), top_right);
+                frame.render_widget(as_instruction(), bottom);
             }
         });
 
@@ -106,9 +110,20 @@ fn as_canvas(vm: &Chip8) -> impl Widget {
         })
 }
 
-fn as_instruction(vm: &Chip8) -> impl Widget {
-    let coords = as_points(&vm);
-    Paragraph::new(format!("Press 'p' to quit."))
+fn as_debug(vm: &Chip8) -> impl Widget {
+    let mut content = String::new();
+    vm.debugLog.iter().for_each(|line| {
+        content.push_str(line);
+        content.push('\n');
+    });
+    Paragraph::new(content)
+        .block(Block::bordered().title("Debug Logs"))
+        .black()
+        .on_white()
+}
+
+fn as_instruction() -> impl Widget {
+    Paragraph::new("Press 'p' to quit.")
         .block(Block::bordered().title("Instructions"))
         .black()
         .on_white()

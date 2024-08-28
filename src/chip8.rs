@@ -263,25 +263,27 @@ impl Chip8 {
                     0x0005 => {
                         let (result, carry) = self.read_vx().overflowing_sub(self.read_vy());
                         self.write_vx(result);
-                        self.write_vf(if carry { 1 } else { 0 });
+                        self.write_vf(if carry { 0 } else { 1 });
                         log.push_str("vx = vx - vy (with carry)")
                     }
                     // TODO(switch implementation for original chip8, see https://www.reddit.com/r/EmuDev/comments/72dunw/chip8_8xy6_help/)
                     0x0006 => {
-                        self.write_vf(self.read_vx() & 0x01);
-                        self.write_vx(self.read_vx() >> 1);
+                        let register_value = self.read_vx();
+                        self.write_vx(register_value >> 1);
+                        self.write_vf(register_value & 0x01);
                         log.push_str("vx = vx >> 1")
                     }
                     0x0007 => {
                         let (result, carry) = self.read_vy().overflowing_sub(self.read_vx());
                         self.write_vx(result);
-                        self.write_vf(if carry { 1 } else { 0 });
+                        self.write_vf(if carry { 0 } else { 1 });
                         log.push_str("vx = vy - vx (with carry)")
                     }
                     // TODO(switch implementation for original chip8, see https://www.reddit.com/r/EmuDev/comments/72dunw/chip8_8xy6_help/)
                     0x000E => {
-                        self.write_vf(self.read_vx() & 0x80);
-                        self.write_vx(self.read_vx() << 1);
+                        let register_value = self.read_vx();
+                        self.write_vx(register_value << 1);
+                        self.write_vf(if register_value & 0x80 > 1 { 1 } else { 0 });
                         log.push_str("vx = vx << 1")
                     }
                     _ => return Err(UnknownOpcode(self.op_code)),

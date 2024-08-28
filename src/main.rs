@@ -16,6 +16,7 @@ use ratatui::{
     widgets::{canvas::*, *},
 };
 
+use crate::errors::EmulationError;
 use ratatui::layout::Flex;
 use std::ops::Add;
 use std::{
@@ -38,6 +39,7 @@ fn main() -> io::Result<()> {
 
     // 60hz
     let tick_rate = Duration::from_millis(16);
+    //let tick_rate = Duration::from_millis(160);
 
     let mut vm = Chip8::default();
 
@@ -45,27 +47,33 @@ fn main() -> io::Result<()> {
     loop {
         let timeout = tick_rate.saturating_sub(last_tick.elapsed());
         let _ = terminal.draw(|frame| {
-            if vm.draw_flag {
-                let vertical_layout =
-                    Layout::vertical([Constraint::Percentage(80), Constraint::Percentage(20)]);
-                let [top, bottom] = vertical_layout.areas(frame.area());
-                let [top_left, top_right] =
-                    Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
-                        .areas(top);
-                frame.render_widget(as_canvas(&vm), top_left);
-                frame.render_widget(as_debug(&vm), top_right);
-                frame.render_widget(as_instruction(), bottom);
-            }
+            let [top, bottom] =
+                Layout::vertical([Constraint::Length(32), Constraint::Fill(1)]).areas(frame.area());
+            let [top_left, top_right] =
+                Layout::horizontal([Constraint::Length(64), Constraint::Fill(1)]).areas(top);
+            frame.render_widget(as_canvas(&vm), top_left);
+            frame.render_widget(as_debug(&vm), top_right);
+            frame.render_widget(as_instruction(), bottom);
         });
 
         // perform one cycle
         if last_tick.elapsed() >= tick_rate {
             match keypad::read_keypad_state(timeout) {
-                Err(_) => break,
+                Err(err) => match err {
+                    EmulationError::UnknownOpcode(opcode) => {
+                        panic!("error happened with opcode {:?}", opcode)
+                    }
+                    EmulationError::UnknownInput => panic!("error happened unknown input"),
+                    EmulationError::Quit => return Ok(()),
+                },
                 Ok(new_state) => keypad_state = new_state,
             }
             if let Err(error) = vm.cycle(keypad_state) {
-                panic!("something wrong happened, {:?}", error)
+                match error {
+                    EmulationError::UnknownOpcode(opcode) => panic!("something wrong happened, {:?}", opcode),
+                    EmulationError::UnknownInput => panic!("wrong input"),
+                    EmulationError::Quit => return Ok(())
+                }
             }
             last_tick = Instant::now();
         }
@@ -112,7 +120,7 @@ fn as_canvas(vm: &Chip8) -> impl Widget {
 
 fn as_debug(vm: &Chip8) -> impl Widget {
     let mut content = String::new();
-    vm.debugLog.iter().for_each(|line| {
+    vm.debug_log.iter().for_each(|line| {
         content.push_str(line);
         content.push('\n');
     });

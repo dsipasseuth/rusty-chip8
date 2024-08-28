@@ -2,6 +2,7 @@ use crate::errors::EmulationError;
 use crate::errors::EmulationError::UnknownOpcode;
 use rand::Rng;
 use std::collections::VecDeque;
+use std::convert::TryFrom;
 
 ///
 /// Initial Fonts provided by the Chip8
@@ -39,9 +40,8 @@ pub(crate) struct Chip8 {
     pub delay_timer: u8,
     pub sound_timer: u8,
     pub stack: Vec<u16>,
-    pub draw_flag: bool,
     pub rng: rand::prelude::ThreadRng,
-    pub debugLog: VecDeque<String>,
+    pub debug_log: VecDeque<String>,
 }
 
 impl Default for Chip8 {
@@ -59,25 +59,24 @@ impl Default for Chip8 {
             delay_timer: 0,
             sound_timer: 0,
             stack: Vec::new(),
-            draw_flag: false,
             rng: rand::thread_rng(),
-            debugLog: VecDeque::new(),
+            debug_log: VecDeque::new(),
         }
     }
 }
 
 impl Chip8 {
     fn log(&mut self, log: String) {
-        if self.debugLog.len() > 20 {
-            self.debugLog.pop_front();
+        if self.debug_log.len() > 20 {
+            self.debug_log.pop_front();
         }
-        self.debugLog.push_back(log)
+        self.debug_log.push_back(log)
     }
     fn log_str(&mut self, log: &str) {
-        if self.debugLog.len() > 20 {
-            self.debugLog.pop_front();
+        if self.debug_log.len() > 30 {
+            self.debug_log.pop_front();
         }
-        self.debugLog.push_back(log.to_string())
+        self.debug_log.push_back(log.to_string())
     }
 
     pub fn load(&mut self, bytes: Vec<u8>) {
@@ -101,12 +100,25 @@ impl Chip8 {
 
     // Write at vx location.
     fn write_vx(&mut self, value: u8) {
-        self.register[((self.op_code & 0x0F00) >> 8) as usize] = value;
+        let register_index = ((self.op_code & 0x0F00) >> 8) as usize;
+        self.register[register_index] = value;
+        self.log(format!(
+            "[deep_debug]: write register register[{}] = {}",
+            register_index, value
+        ));
     }
 
     // Register Y if available is always located at the same position in opcode.
     fn read_vy(&self) -> u8 {
         self.register[((self.op_code & 0x00F0) >> 4) as usize]
+    }
+
+    fn read_vf(&self) -> u8 {
+        self.register[0x0F]
+    }
+
+    fn write_vf(&mut self, value: u8) {
+        self.register[0x0F] = value
     }
 
     fn set_program_counter(&mut self, index: u16) {
@@ -129,22 +141,21 @@ impl Chip8 {
     }
 
     fn draw(&mut self, x: u8, y: u8, height: u8) {
+        self.write_vf(0);
         for y_row in 0..height {
-            self.register[0xF] = 0;
             let sprite = self.memory[(self.memory_index + y_row as u16) as usize];
             for x_col in 0..8 {
                 if (sprite & (0x80 >> x_col)) > 0 {
                     let gfx_loc: usize =
                         (x as usize + x_col as usize + (y as usize + y_row as usize) * 64) % 2048;
                     if self.gfx[gfx_loc] == true {
-                        self.register[0xF] = 1
+                        self.write_vf(1)
                     } else {
                         self.gfx[gfx_loc] ^= true
                     }
                 }
             }
         }
-        self.draw_flag = true;
     }
 
     fn register_dump(&mut self, reg_max: u8) {
@@ -173,14 +184,15 @@ impl Chip8 {
         match self.op_code & 0xF000 {
             0x0000 => match self.op_code {
                 0x00E0 => {
-                    self.gfx.iter_mut().for_each(|x| *x = false);
+                    self.gfx.fill(false);
                     self.increase_program_counter();
                     log.push_str("Clear screen")
                 }
                 0x00EE => {
                     self.program_counter = self.stack.pop().unwrap();
+                    self.increase_program_counter();
                     log.push_str(&format!(
-                        "set program counter from stack to {:#06X}",
+                        "set program counter from stack back to {:#06X}",
                         self.program_counter
                     ))
                 }
@@ -246,30 +258,30 @@ impl Chip8 {
                     0x0004 => {
                         let (result, carry) = self.read_vx().overflowing_add(self.read_vy());
                         self.write_vx(result);
-                        self.register[0xF] = if carry { 1 } else { 0 };
+                        self.write_vf(if carry { 1 } else { 0 });
                         log.push_str("vx = vx + vy (with carry flag)")
                     }
                     0x0005 => {
                         let (result, carry) = self.read_vx().overflowing_sub(self.read_vy());
                         self.write_vx(result);
-                        self.register[0xF] = if carry { 1 } else { 0 };
+                        self.write_vf(if carry { 1 } else { 0 });
                         log.push_str("vx = vx - vy (with carry)")
                     }
                     // TODO(switch implementation for original chip8, see https://www.reddit.com/r/EmuDev/comments/72dunw/chip8_8xy6_help/)
                     0x0006 => {
-                        self.register[0xF] = self.read_vx() & 0x1;
+                        self.write_vf(self.read_vx() & 0x01);
                         self.write_vx(self.read_vx() >> 1);
                         log.push_str("vx = vx >> 1")
                     }
                     0x0007 => {
                         let (result, carry) = self.read_vy().overflowing_sub(self.read_vx());
                         self.write_vx(result);
-                        self.register[0xF] = if carry { 1 } else { 0 };
+                        self.write_vf(if carry { 1 } else { 0 });
                         log.push_str("vx = vy - vx (with carry)")
                     }
                     // TODO(switch implementation for original chip8, see https://www.reddit.com/r/EmuDev/comments/72dunw/chip8_8xy6_help/)
                     0x000E => {
-                        self.register[0xF] = self.read_vx() & 0x8;
+                        self.write_vf(self.read_vx() & 0x80);
                         self.write_vx(self.read_vx() << 1);
                         log.push_str("vx = vx << 1")
                     }
@@ -326,7 +338,7 @@ impl Chip8 {
                 match self.op_code & 0x00FF {
                     0x0007 => {
                         self.write_vx(self.delay_timer);
-                        log.push_str("vx = delay timer")
+                        log.push_str("vx = delay timer");
                     }
                     0x000A => {
                         // Increase counter only if key press
@@ -334,19 +346,20 @@ impl Chip8 {
                             self.increase_program_counter();
                             log.push_str("key pressed read, continuing")
                         }
-                        log.push_str("wait for key press")
+                        log.push_str("wait for key press");
                     }
                     0x0015 => {
                         self.delay_timer = self.read_vx();
-                        log.push_str("set delay timer")
+                        log.push_str("set delay timer");
                     }
                     0x0018 => {
                         self.sound_timer = self.read_vx();
-                        log.push_str("set sound timer")
+                        log.push_str("set sound timer");
                     }
                     0x001E => {
                         let (result, _) = self.memory_index.overflowing_add(self.read_vx() as u16);
-                        self.memory_index = result;
+                        self.memory_index = result & 0x0FFF; // u12, not u16
+                                                             // TODO handle overflowing.
                         log.push_str("i = i + vx")
                     }
                     0x0029 => {
@@ -382,11 +395,13 @@ impl Chip8 {
                         ))
                     }
                     0x0055 => {
-                        self.register_dump(self.read_vx());
+                        let register_index = u8::try_from((self.op_code & 0x0F00) >> 8).unwrap();
+                        self.register_dump(register_index);
                         log.push_str("dump vy")
                     }
                     0x0065 => {
-                        self.register_load(self.read_vx());
+                        let register_index = u8::try_from((self.op_code & 0x0F00) >> 8).unwrap();
+                        self.register_load(register_index);
                         log.push_str("load vx")
                     }
                     _ => return Err(UnknownOpcode(self.op_code)),

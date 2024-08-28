@@ -48,9 +48,11 @@ fn main() -> io::Result<()> {
         if last_tick.elapsed() >= tick_rate {
             let _ = terminal.draw(|frame| {
                 let [top, bottom] =
-                    Layout::vertical([Constraint::Percentage(70), Constraint::Fill(1)]).areas(frame.area());
+                    Layout::vertical([Constraint::Percentage(70), Constraint::Fill(1)])
+                        .areas(frame.area());
                 let [top_left, top_right] =
-                    Layout::horizontal([Constraint::Percentage(35), Constraint::Fill(1)]).areas(top);
+                    Layout::horizontal([Constraint::Percentage(35), Constraint::Fill(1)])
+                        .areas(top);
                 frame.render_widget(as_canvas(&vm), top_left);
                 frame.render_widget(as_debug(&vm), top_right);
                 frame.render_widget(as_instruction(), bottom);
@@ -67,9 +69,11 @@ fn main() -> io::Result<()> {
             }
             if let Err(error) = vm.cycle(keypad_state) {
                 match error {
-                    EmulationError::UnknownOpcode(opcode) => panic!("something wrong happened, {:?}", opcode),
+                    EmulationError::UnknownOpcode(opcode) => {
+                        panic!("something wrong happened, {:?}", opcode)
+                    }
                     EmulationError::UnknownInput => panic!("wrong input"),
-                    EmulationError::Quit => break
+                    EmulationError::Quit => break,
                 }
             }
             last_tick = Instant::now();
@@ -121,13 +125,11 @@ fn as_debug(vm: &Chip8) -> impl Widget {
         content.push_str(line);
         content.push('\n');
     });
-    Paragraph::new(content)
-        .block(Block::bordered().title("Debug Logs"))
+    Paragraph::new(content).block(Block::bordered().title("Debug Logs"))
 }
 
 fn as_instruction() -> impl Widget {
-    Paragraph::new("Press 'p' to quit.")
-        .block(Block::bordered().title("Instructions"))
+    Paragraph::new("Press 'p' to quit.").block(Block::bordered().title("Instructions"))
 }
 
 fn init_terminal() -> io::Result<Terminal<CrosstermBackend<Stdout>>> {

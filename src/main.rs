@@ -37,7 +37,7 @@ fn main() -> io::Result<()> {
     // 60hz
     let tick_rate = Duration::from_millis(16);
 
-    let mut vm = chip8::init();
+    let mut vm = Chip8::default();
 
     vm.load(contents);
     loop {

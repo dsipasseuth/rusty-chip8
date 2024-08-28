@@ -20,6 +20,27 @@ pub(crate) struct Chip8 {
     pub rng: rand::prelude::ThreadRng,
 }
 
+impl Default for Chip8 {
+    fn default() -> Self {
+        println!("Rusty Chip8 initialized!");
+        let mut init_memory = [0; 4096];
+        init_memory[..80].clone_from_slice(&FONTS_SET);
+        Self {
+            op_code: 0,
+            memory: init_memory,
+            register: [0; 16],
+            memory_index: 0,
+            program_counter: 0x200,
+            gfx: [false; 2048],
+            delay_timer: 0,
+            sound_timer: 0,
+            stack: Vec::new(),
+            draw_flag: false,
+            rng: rand::thread_rng(),
+        }
+    }
+}
+
 impl Chip8 {
     pub fn load(&mut self, bytes: Vec<u8>) {
         let mut i = 512;
@@ -278,22 +299,3 @@ const FONTS_SET: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 ];
-
-pub fn init() -> Chip8 {
-    println!("Rusty Chip8 initialized!");
-    let mut init_memory = [0; 4096];
-    init_memory[..80].clone_from_slice(&FONTS_SET);
-    return Chip8 {
-        op_code: 0,
-        memory: init_memory,
-        register: [0; 16],
-        memory_index: 0,
-        program_counter: 0x200,
-        gfx: [false; 2048],
-        delay_timer: 0,
-        sound_timer: 0,
-        stack: Vec::new(),
-        draw_flag: false,
-        rng: rand::thread_rng(),
-    };
-}

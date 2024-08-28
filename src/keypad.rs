@@ -20,8 +20,8 @@ use std::time::Duration;
 /// through 1 to z (top to bottom)
 ///
 pub fn read_keypad_state(timeout: Duration) -> Result<[bool; 16], EmulationError> {
-    if event::poll(timeout).map_err(|err| EmulationError::UnknownInput)? {
-        if let Key(key) = event::read().map_err(|err| EmulationError::UnknownInput)? {
+    if event::poll(timeout).map_err(|_| EmulationError::UnknownInput)? {
+        if let Key(key) = event::read().map_err(|_| EmulationError::UnknownInput)? {
             let mut keypad_state = [false; 16];
             if key.kind == KeyEventKind::Press {
                 match key.code {

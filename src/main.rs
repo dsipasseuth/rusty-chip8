@@ -17,8 +17,6 @@ use ratatui::{
 };
 
 use crate::errors::EmulationError;
-use ratatui::layout::Flex;
-use std::ops::Add;
 use std::{
     io::{self, stdout, Stdout},
     time::{Duration, Instant},
@@ -46,25 +44,24 @@ fn main() -> io::Result<()> {
     vm.load(contents);
     loop {
         let timeout = tick_rate.saturating_sub(last_tick.elapsed());
-        let _ = terminal.draw(|frame| {
-            let [top, bottom] =
-                Layout::vertical([Constraint::Percentage(70), Constraint::Fill(1)]).areas(frame.area());
-            let [top_left, top_right] =
-                Layout::horizontal([Constraint::Percentage(35), Constraint::Fill(1)]).areas(top);
-            frame.render_widget(as_canvas(&vm), top_left);
-            frame.render_widget(as_debug(&vm), top_right);
-            frame.render_widget(as_instruction(), bottom);
-        });
-
         // perform one cycle
         if last_tick.elapsed() >= tick_rate {
+            let _ = terminal.draw(|frame| {
+                let [top, bottom] =
+                    Layout::vertical([Constraint::Percentage(70), Constraint::Fill(1)]).areas(frame.area());
+                let [top_left, top_right] =
+                    Layout::horizontal([Constraint::Percentage(35), Constraint::Fill(1)]).areas(top);
+                frame.render_widget(as_canvas(&vm), top_left);
+                frame.render_widget(as_debug(&vm), top_right);
+                frame.render_widget(as_instruction(), bottom);
+            });
             match keypad::read_keypad_state(timeout) {
                 Err(err) => match err {
                     EmulationError::UnknownOpcode(opcode) => {
                         panic!("error happened with opcode {:?}", opcode)
                     }
                     EmulationError::UnknownInput => panic!("error happened unknown input"),
-                    EmulationError::Quit => return Ok(()),
+                    EmulationError::Quit => break,
                 },
                 Ok(new_state) => keypad_state = new_state,
             }
@@ -72,7 +69,7 @@ fn main() -> io::Result<()> {
                 match error {
                     EmulationError::UnknownOpcode(opcode) => panic!("something wrong happened, {:?}", opcode),
                     EmulationError::UnknownInput => panic!("wrong input"),
-                    EmulationError::Quit => return Ok(())
+                    EmulationError::Quit => break
                 }
             }
             last_tick = Instant::now();
@@ -143,11 +140,4 @@ fn restore_terminal() -> io::Result<()> {
     disable_raw_mode()?;
     stdout().execute(LeaveAlternateScreen)?;
     Ok(())
-}
-fn center(area: Rect, horizontal: Constraint, vertical: Constraint) -> Rect {
-    let [area] = Layout::horizontal([horizontal])
-        .flex(Flex::Center)
-        .areas(area);
-    let [area] = Layout::vertical([vertical]).flex(Flex::Center).areas(area);
-    area
 }

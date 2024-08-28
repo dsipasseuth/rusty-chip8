@@ -41,6 +41,7 @@ pub(crate) struct Chip8 {
     pub sound_timer: u8,
     pub stack: Vec<u16>,
     pub rng: rand::prelude::ThreadRng,
+    pub debug_enabled: bool,
     pub debug_log: VecDeque<String>,
 }
 
@@ -60,23 +61,30 @@ impl Default for Chip8 {
             sound_timer: 0,
             stack: Vec::new(),
             rng: rand::thread_rng(),
+            debug_enabled: false,
             debug_log: VecDeque::new(),
         }
     }
 }
 
+const DEBUG_LOG_BUFFER_SIZE: usize = 50;
+
 impl Chip8 {
     fn log(&mut self, log: String) {
-        if self.debug_log.len() > 20 {
-            self.debug_log.pop_front();
+        if self.debug_enabled {
+            if self.debug_log.len() > DEBUG_LOG_BUFFER_SIZE {
+                self.debug_log.pop_front();
+            }
+            self.debug_log.push_back(log)
         }
-        self.debug_log.push_back(log)
     }
     fn log_str(&mut self, log: &str) {
-        if self.debug_log.len() > 30 {
-            self.debug_log.pop_front();
+        if self.debug_enabled {
+            if self.debug_log.len() > DEBUG_LOG_BUFFER_SIZE {
+                self.debug_log.pop_front();
+            }
+            self.debug_log.push_back(log.to_string())
         }
-        self.debug_log.push_back(log.to_string())
     }
 
     pub fn load(&mut self, bytes: Vec<u8>) {
@@ -107,10 +115,6 @@ impl Chip8 {
     // Register Y if available is always located at the same position in opcode.
     fn read_vy(&self) -> u8 {
         self.register[((self.op_code & 0x00F0) >> 4) as usize]
-    }
-
-    fn read_vf(&self) -> u8 {
-        self.register[0x0F]
     }
 
     fn write_vf(&mut self, value: u8) {

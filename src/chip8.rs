@@ -41,7 +41,7 @@ pub(crate) struct Chip8 {
     pub sound_timer: u8,
     pub stack: Vec<u16>,
     pub rng: rand::prelude::ThreadRng,
-    pub debug_enabled: bool,
+    #[cfg(debug_assertions)]
     pub debug_log: VecDeque<String>,
 }
 
@@ -61,30 +61,29 @@ impl Default for Chip8 {
             sound_timer: 0,
             stack: Vec::new(),
             rng: rand::thread_rng(),
-            debug_enabled: false,
+            #[cfg(debug_assertions)]
             debug_log: VecDeque::new(),
         }
     }
 }
 
+#[cfg(debug_assertions)]
 const DEBUG_LOG_BUFFER_SIZE: usize = 50;
 
 impl Chip8 {
+    #[cfg(debug_assertions)]
     fn log(&mut self, log: String) {
-        if self.debug_enabled {
-            if self.debug_log.len() > DEBUG_LOG_BUFFER_SIZE {
-                self.debug_log.pop_front();
-            }
-            self.debug_log.push_back(log)
+        if self.debug_log.len() > DEBUG_LOG_BUFFER_SIZE {
+            self.debug_log.pop_front();
         }
+        self.debug_log.push_back(log)
     }
+    #[cfg(debug_assertions)]
     fn log_str(&mut self, log: &str) {
-        if self.debug_enabled {
-            if self.debug_log.len() > DEBUG_LOG_BUFFER_SIZE {
-                self.debug_log.pop_front();
-            }
-            self.debug_log.push_back(log.to_string())
+        if self.debug_log.len() > DEBUG_LOG_BUFFER_SIZE {
+            self.debug_log.pop_front();
         }
+        self.debug_log.push_back(log.to_string())
     }
 
     pub fn load(&mut self, bytes: Vec<u8>) {
@@ -93,6 +92,8 @@ impl Chip8 {
             self.memory[i] = *v;
             i = i + 1;
         }
+
+        #[cfg(debug_assertions)]
         self.log_str("Rom Loaded into memory");
     }
 
@@ -179,17 +180,21 @@ impl Chip8 {
         self.op_code = self.read_op_code();
         // Decode Opcode
         // Op code list : https://en.wikipedia.org/wiki/CHIP-8#Opcode_table
+        #[cfg(debug_assertions)]
         let mut log = format!("Reading opcode [{:#06X}]", self.op_code);
+
         match self.op_code & 0xF000 {
             0x0000 => match self.op_code {
                 0x00E0 => {
                     self.gfx.fill(false);
                     self.increase_program_counter();
+                    #[cfg(debug_assertions)]
                     log.push_str("Clear screen")
                 }
                 0x00EE => {
                     self.program_counter = self.stack.pop().unwrap();
                     self.increase_program_counter();
+                    #[cfg(debug_assertions)]
                     log.push_str(&format!(
                         "set program counter from stack back to {:#06X}",
                         self.program_counter
@@ -199,6 +204,7 @@ impl Chip8 {
             },
             0x1000 => {
                 self.set_program_counter(self.op_code & 0x0FFF);
+                #[cfg(debug_assertions)]
                 log.push_str(&format!(
                     "set program counter to {:#06X}",
                     self.program_counter
@@ -206,26 +212,31 @@ impl Chip8 {
             }
             0x2000 => {
                 self.call_at(self.op_code & 0x0FFF);
+                #[cfg(debug_assertions)]
                 log.push_str("call instruction")
             }
             0x3000 => {
                 self.increase_program_counter_if(self.read_vx() == (self.op_code & 0x00FF) as u8);
                 self.increase_program_counter();
+                #[cfg(debug_assertions)]
                 log.push_str("increase pc (match vx)")
             }
             0x4000 => {
                 self.increase_program_counter_if(self.read_vx() != (self.op_code & 0x00FF) as u8);
                 self.increase_program_counter();
+                #[cfg(debug_assertions)]
                 log.push_str("increase pc (not match vx)")
             }
             0x5000 => {
                 self.increase_program_counter_if(self.read_vx() == self.read_vy());
                 self.increase_program_counter();
+                #[cfg(debug_assertions)]
                 log.push_str("increase pc (vx == vy)")
             }
             0x6000 => {
                 self.write_vx((self.op_code & 0x00FF) as u8);
                 self.increase_program_counter();
+                #[cfg(debug_assertions)]
                 log.push_str("write vx")
             }
             0x7000 => {
@@ -234,36 +245,43 @@ impl Chip8 {
                     .overflowing_add((self.op_code & 0x00FF) as u8);
                 self.write_vx(result);
                 self.increase_program_counter();
+                #[cfg(debug_assertions)]
                 log.push_str("add into write vx (no carry flag)")
             }
             0x8000 => {
                 match self.op_code & 0x000F {
                     0x0000 => {
                         self.write_vx(self.read_vy());
+                        #[cfg(debug_assertions)]
                         log.push_str("move vy into vx")
                     }
                     0x0001 => {
                         self.write_vx(self.read_vx() | self.read_vy());
+                        #[cfg(debug_assertions)]
                         log.push_str("vx = vx or vy")
                     }
                     0x0002 => {
                         self.write_vx(self.read_vx() & self.read_vy());
+                        #[cfg(debug_assertions)]
                         log.push_str("vx = vx and vy")
                     }
                     0x0003 => {
                         self.write_vx(self.read_vx() ^ self.read_vy());
+                        #[cfg(debug_assertions)]
                         log.push_str("vx = vx xor vy")
                     }
                     0x0004 => {
                         let (result, carry) = self.read_vx().overflowing_add(self.read_vy());
                         self.write_vx(result);
                         self.write_vf(if carry { 1 } else { 0 });
+                        #[cfg(debug_assertions)]
                         log.push_str("vx = vx + vy (with carry flag)")
                     }
                     0x0005 => {
                         let (result, carry) = self.read_vx().overflowing_sub(self.read_vy());
                         self.write_vx(result);
                         self.write_vf(if carry { 0 } else { 1 });
+                        #[cfg(debug_assertions)]
                         log.push_str("vx = vx - vy (with carry)")
                     }
                     // TODO(switch implementation for original chip8, see https://www.reddit.com/r/EmuDev/comments/72dunw/chip8_8xy6_help/)
@@ -271,12 +289,14 @@ impl Chip8 {
                         let register_value = self.read_vx();
                         self.write_vx(register_value >> 1);
                         self.write_vf(register_value & 0x01);
+                        #[cfg(debug_assertions)]
                         log.push_str("vx = vx >> 1")
                     }
                     0x0007 => {
                         let (result, carry) = self.read_vy().overflowing_sub(self.read_vx());
                         self.write_vx(result);
                         self.write_vf(if carry { 0 } else { 1 });
+                        #[cfg(debug_assertions)]
                         log.push_str("vx = vy - vx (with carry)")
                     }
                     // TODO(switch implementation for original chip8, see https://www.reddit.com/r/EmuDev/comments/72dunw/chip8_8xy6_help/)
@@ -284,6 +304,7 @@ impl Chip8 {
                         let register_value = self.read_vx();
                         self.write_vx(register_value << 1);
                         self.write_vf(if register_value & 0x80 > 1 { 1 } else { 0 });
+                        #[cfg(debug_assertions)]
                         log.push_str("vx = vx << 1")
                     }
                     _ => return Err(UnknownOpcode(self.op_code)),
@@ -293,22 +314,26 @@ impl Chip8 {
             0x9000 => {
                 self.increase_program_counter_if(self.read_vx() != self.read_vy());
                 self.increase_program_counter();
+                #[cfg(debug_assertions)]
                 log.push_str("increase pc vx != vy")
             }
             0xA000 => {
                 self.memory_index = self.op_code & 0x0FFF;
                 self.increase_program_counter();
+                #[cfg(debug_assertions)]
                 log.push_str("write memory")
             }
             0xB000 => {
                 let v0: u16 = self.register[0] as u16;
                 self.set_program_counter((self.op_code & 0x0FFF) + v0);
+                #[cfg(debug_assertions)]
                 log.push_str(&format!("jump by {}", v0))
             }
             0xC000 => {
                 let random_number: u8 = self.rng.gen();
                 self.write_vx(random_number & (self.op_code & 0x00FF) as u8);
                 self.increase_program_counter();
+                #[cfg(debug_assertions)]
                 log.push_str("randomize vx")
             }
             0xD000 => {
@@ -318,6 +343,7 @@ impl Chip8 {
                     (self.op_code & 0x000F) as u8,
                 );
                 self.increase_program_counter();
+                #[cfg(debug_assertions)]
                 log.push_str("draw")
             }
             0xE000 => match self.op_code & 0x00FF {
@@ -325,13 +351,15 @@ impl Chip8 {
                     let key = self.read_vx() as usize;
                     self.increase_program_counter_if(keypad[key]);
                     self.increase_program_counter();
-                    log.push_str("skip if key pressed in vx")
+                    #[cfg(debug_assertions)]
+                    log.push_str(&format!("skip if key {} pressed in vx", key))
                 }
                 0x00A1 => {
                     let key = self.read_vx() as usize;
                     self.increase_program_counter_if(!keypad[key]);
                     self.increase_program_counter();
-                    log.push_str("skip if key pressed in not vx")
+                    #[cfg(debug_assertions)]
+                    log.push_str(&format!("skip if key {} pressed in not vx", key))
                 }
                 _ => return Err(UnknownOpcode(self.op_code)),
             },
@@ -339,28 +367,35 @@ impl Chip8 {
                 match self.op_code & 0x00FF {
                     0x0007 => {
                         self.write_vx(self.delay_timer);
+                        #[cfg(debug_assertions)]
                         log.push_str("vx = delay timer");
                     }
                     0x000A => {
                         // Increase counter only if key press
                         if keypad.iter().any(|&key| key) {
                             self.increase_program_counter();
+                            #[cfg(debug_assertions)]
                             log.push_str("key pressed read, continuing")
+                        } else {
+                            #[cfg(debug_assertions)]
+                            log.push_str("wait for key press");
                         }
-                        log.push_str("wait for key press");
                     }
                     0x0015 => {
                         self.delay_timer = self.read_vx();
+                        #[cfg(debug_assertions)]
                         log.push_str("set delay timer");
                     }
                     0x0018 => {
                         self.sound_timer = self.read_vx();
+                        #[cfg(debug_assertions)]
                         log.push_str("set sound timer");
                     }
                     0x001E => {
                         let (result, _) = self.memory_index.overflowing_add(self.read_vx() as u16);
                         self.memory_index = result & 0x0FFF; // u12, not u16
                                                              // TODO handle overflowing.
+                        #[cfg(debug_assertions)]
                         log.push_str("i = i + vx")
                     }
                     0x0029 => {
@@ -376,6 +411,7 @@ impl Chip8 {
                             0x8 => 40,
                             _ => return Err(UnknownOpcode(self.op_code)),
                         };
+                        #[cfg(debug_assertions)]
                         log.push_str(&format!("i = sprite_addr[{:#06X}]", self.read_vx()))
                     }
                     0x0033 => {
@@ -387,6 +423,7 @@ impl Chip8 {
                         self.memory[self.memory_index as usize] = hundreds;
                         self.memory[self.memory_index as usize + 1] = tens;
                         self.memory[self.memory_index as usize + 2] = unit;
+                        #[cfg(debug_assertions)]
                         log.push_str(&format!(
                             "vx {:#06X} as decimal number [{} {} {}]",
                             self.read_vx(),
@@ -398,11 +435,13 @@ impl Chip8 {
                     0x0055 => {
                         let register_index = u8::try_from((self.op_code & 0x0F00) >> 8).unwrap();
                         self.register_dump(register_index);
+                        #[cfg(debug_assertions)]
                         log.push_str("dump vy")
                     }
                     0x0065 => {
                         let register_index = u8::try_from((self.op_code & 0x0F00) >> 8).unwrap();
                         self.register_load(register_index);
+                        #[cfg(debug_assertions)]
                         log.push_str("load vx")
                     }
                     _ => return Err(UnknownOpcode(self.op_code)),
@@ -412,6 +451,7 @@ impl Chip8 {
             _ => return Err(UnknownOpcode(self.op_code)),
         };
 
+        #[cfg(debug_assertions)]
         self.log(log);
 
         // Update timers

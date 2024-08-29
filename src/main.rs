@@ -17,6 +17,7 @@ use ratatui::{
 };
 
 use crate::errors::EmulationError;
+use crossterm::event::EventStream;
 use std::{
     io::{self, stdout, Stdout},
     time::{Duration, Instant},
@@ -29,6 +30,8 @@ fn main() -> io::Result<()> {
     let contents = fs::read(rom_path).expect("Cannot read file");
 
     let mut terminal = init_terminal()?;
+
+    let mut keypad_input_stream = EventStream::new();
 
     let mut keypad_state;
 
@@ -43,21 +46,9 @@ fn main() -> io::Result<()> {
 
     vm.load(contents);
     loop {
-        let timeout = tick_rate.saturating_sub(last_tick.elapsed());
         // perform one cycle
         if last_tick.elapsed() >= tick_rate {
-            let _ = terminal.draw(|frame| {
-                let [top, bottom] =
-                    Layout::vertical([Constraint::Percentage(70), Constraint::Fill(1)])
-                        .areas(frame.area());
-                let [top_left, top_right] =
-                    Layout::horizontal([Constraint::Percentage(35), Constraint::Fill(1)])
-                        .areas(top);
-                frame.render_widget(as_canvas(&vm), top_left);
-                frame.render_widget(as_debug(&vm), top_right);
-                frame.render_widget(as_instruction(), bottom);
-            });
-            match keypad::read_keypad_state(timeout) {
+            match keypad::read_keypad_state(&mut keypad_input_stream) {
                 Err(err) => match err {
                     EmulationError::UnknownOpcode(opcode) => {
                         panic!("error happened with opcode {:?}", opcode)
@@ -76,6 +67,18 @@ fn main() -> io::Result<()> {
                     EmulationError::Quit => break,
                 }
             }
+
+            let _ = terminal.draw(|frame| {
+                let [top, bottom] =
+                    Layout::vertical([Constraint::Percentage(70), Constraint::Fill(1)])
+                        .areas(frame.area());
+                let [top_left, top_right] =
+                    Layout::horizontal([Constraint::Percentage(35), Constraint::Fill(1)])
+                        .areas(top);
+                frame.render_widget(as_canvas(&vm), top_left);
+                frame.render_widget(as_debug(&vm, &keypad_state), top_right);
+                frame.render_widget(as_instruction(), bottom);
+            });
             last_tick = Instant::now();
         }
     }
@@ -119,8 +122,9 @@ fn as_canvas(vm: &Chip8) -> impl Widget {
         })
 }
 
-fn as_debug(vm: &Chip8) -> impl Widget {
-    let mut content = String::new();
+fn as_debug(vm: &Chip8, keypad: &[bool]) -> impl Widget {
+    let mut content = format!("{:?}", keypad);
+    #[cfg(debug_assertions)]
     vm.debug_log.iter().for_each(|line| {
         content.push_str(line);
         content.push('\n');

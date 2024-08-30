@@ -41,6 +41,7 @@ pub(crate) struct Chip8 {
     pub sound_timer: u8,
     pub stack: Vec<u16>,
     pub rng: rand::prelude::ThreadRng,
+    pub should_draw: bool,
     #[cfg(debug_assertions)]
     pub debug_log: VecDeque<String>,
 }
@@ -61,6 +62,7 @@ impl Default for Chip8 {
             sound_timer: 0,
             stack: Vec::new(),
             rng: rand::thread_rng(),
+            should_draw: false,
             #[cfg(debug_assertions)]
             debug_log: VecDeque::new(),
         }
@@ -142,6 +144,7 @@ impl Chip8 {
     }
 
     fn draw(&mut self, x: u8, y: u8, height: u8) {
+        self.should_draw = true;
         self.write_vf(0);
         for y_row in 0..height {
             let sprite = self.memory[(self.memory_index + y_row as u16) as usize];
@@ -175,7 +178,7 @@ impl Chip8 {
             self.memory[self.memory_index as usize + reg_max as usize];
     }
 
-    pub fn cycle(&mut self, keypad: [bool; 16]) -> Result<u16, EmulationError> {
+    pub fn cycle(&mut self, keypad: Option<u8>) -> Result<u16, EmulationError> {
         // Fetch Opcode
         self.op_code = self.read_op_code();
         // Decode Opcode
@@ -348,18 +351,28 @@ impl Chip8 {
             }
             0xE000 => match self.op_code & 0x00FF {
                 0x009E => {
-                    let key = self.read_vx() as usize;
-                    self.increase_program_counter_if(keypad[key]);
+                    let key_checked = self.read_vx();
+                    match keypad {
+                        Some(key_pressed) => {
+                            self.increase_program_counter_if(key_pressed == key_checked)
+                        }
+                        _ => {}
+                    };
                     self.increase_program_counter();
                     #[cfg(debug_assertions)]
-                    log.push_str(&format!("skip if key {} pressed in vx", key))
+                    log.push_str(&format!("skip if key {} pressed in vx", key_checked))
                 }
                 0x00A1 => {
-                    let key = self.read_vx() as usize;
-                    self.increase_program_counter_if(!keypad[key]);
+                    let key_checked = self.read_vx();
+                    match keypad {
+                        Some(key_pressed) => {
+                            self.increase_program_counter_if(key_pressed != key_checked)
+                        }
+                        _ => {}
+                    };
                     self.increase_program_counter();
                     #[cfg(debug_assertions)]
-                    log.push_str(&format!("skip if key {} pressed in not vx", key))
+                    log.push_str(&format!("skip if key {} pressed in not vx", key_checked))
                 }
                 _ => return Err(UnknownOpcode(self.op_code)),
             },
@@ -372,13 +385,17 @@ impl Chip8 {
                     }
                     0x000A => {
                         // Increase counter only if key press
-                        if keypad.iter().any(|&key| key) {
-                            self.increase_program_counter();
-                            #[cfg(debug_assertions)]
-                            log.push_str("key pressed read, continuing")
-                        } else {
-                            #[cfg(debug_assertions)]
-                            log.push_str("wait for key press");
+                        match keypad {
+                            Some(_) => {
+                                self.increase_program_counter();
+                                #[cfg(debug_assertions)]
+                                log.push_str("key pressed read, continuing")
+                            }
+                            _ =>
+                            {
+                                #[cfg(debug_assertions)]
+                                log.push_str("wait for key press")
+                            }
                         }
                     }
                     0x0015 => {

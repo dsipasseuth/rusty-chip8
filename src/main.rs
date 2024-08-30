@@ -17,7 +17,8 @@ use ratatui::{
 };
 
 use crate::errors::EmulationError;
-use crossterm::event::EventStream;
+use crate::keypad::KeypadEvent;
+use async_std::channel::unbounded;
 use std::{
     io::{self, stdout, Stdout},
     time::{Duration, Instant},
@@ -27,47 +28,42 @@ fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
     println!("Loading {:?}", args);
     let rom_path = &args[1];
+
+    let (keypad_listener, vm_receiver) = unbounded();
+
     let contents = fs::read(rom_path).expect("Cannot read file");
 
     let mut terminal = init_terminal()?;
 
-    let mut keypad_input_stream = EventStream::new();
-
-    let mut keypad_state;
+    let join = keypad::spawn_keypad_handler(keypad_listener);
 
     // pooling time.
     let mut last_tick = Instant::now();
 
     // 60hz
-    let tick_rate = Duration::from_millis(16);
-    //let tick_rate = Duration::from_millis(160);
+    let tick_rate = Duration::from_millis(5);
 
     let mut vm = Chip8::default();
 
     vm.load(contents);
+    let mut keypad_value: Option<u8> = None;
     loop {
         // perform one cycle
+        match vm_receiver.try_recv() {
+            Ok(KeypadEvent::Keypad(value)) => keypad_value = Some(value),
+            Ok(KeypadEvent::Quit) => break,
+            Ok(KeypadEvent::Clear) => keypad_value = None,
+            _ => {}
+        };
+
         if last_tick.elapsed() >= tick_rate {
-            match keypad::read_keypad_state(&mut keypad_input_stream) {
-                Err(err) => match err {
-                    EmulationError::UnknownOpcode(opcode) => {
-                        panic!("error happened with opcode {:?}", opcode)
-                    }
-                    EmulationError::UnknownInput => panic!("error happened unknown input"),
-                    EmulationError::Quit => break,
-                },
-                Ok(new_state) => keypad_state = new_state,
-            }
-            if let Err(error) = vm.cycle(keypad_state) {
+            if let Err(error) = vm.cycle(keypad_value) {
                 match error {
                     EmulationError::UnknownOpcode(opcode) => {
                         panic!("something wrong happened, {:?}", opcode)
                     }
-                    EmulationError::UnknownInput => panic!("wrong input"),
-                    EmulationError::Quit => break,
                 }
             }
-
             let _ = terminal.draw(|frame| {
                 let [top, bottom] =
                     Layout::vertical([Constraint::Percentage(70), Constraint::Fill(1)])
@@ -76,12 +72,13 @@ fn main() -> io::Result<()> {
                     Layout::horizontal([Constraint::Percentage(35), Constraint::Fill(1)])
                         .areas(top);
                 frame.render_widget(as_canvas(&vm), top_left);
-                frame.render_widget(as_debug(&vm, &keypad_state), top_right);
+                frame.render_widget(as_debug(&vm, keypad_value), top_right);
                 frame.render_widget(as_instruction(), bottom);
             });
             last_tick = Instant::now();
         }
     }
+    async_std::task::block_on(join.cancel());
     restore_terminal()
 }
 
@@ -122,7 +119,7 @@ fn as_canvas(vm: &Chip8) -> impl Widget {
         })
 }
 
-fn as_debug(vm: &Chip8, keypad: &[bool]) -> impl Widget {
+fn as_debug(vm: &Chip8, keypad: Option<u8>) -> impl Widget {
     let mut content = format!("{:?}", keypad);
     #[cfg(debug_assertions)]
     vm.debug_log.iter().for_each(|line| {

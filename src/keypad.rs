@@ -1,11 +1,11 @@
-use crate::errors::EmulationError;
-use crate::errors::EmulationError::Quit;
+use crate::keypad::KeypadEvent::{Clear, Quit};
+use async_std::channel::Sender;
+use async_std::task::JoinHandle;
 use crossterm::event::Event::Key;
 use crossterm::event::{EventStream, KeyCode, KeyEventKind};
-use std::time::{Duration, Instant};
-
 use futures::{future::FutureExt, select, StreamExt};
 use futures_timer::Delay;
+use std::time::Duration;
 
 ///
 /// Read keypad state, but only block read until timeout is reached. if timeout is reached,
@@ -21,68 +21,58 @@ use futures_timer::Delay;
 /// It's mapped on the left side of the keyboard from keys 1 to 4 (left to right),
 /// through 1 to z (top to bottom)
 ///
-pub(crate) async fn async_read_keypad_state(
-    event_stream: &mut EventStream,
-    duration: Duration,
-) -> Result<[bool; 16], EmulationError> {
-    let last_tick = Instant::now();
-    let mut keypad_state = [false; 16];
-    let mut remaining_duration = duration;
+pub(crate) async fn async_listen_keypad_state(keypad_listener: Sender<KeypadEvent>) {
+    let mut event_stream = EventStream::new();
     loop {
-        let mut delay = Delay::new(remaining_duration).fuse();
+        let mut delay = Delay::new(Duration::from_millis(500)).fuse();
 
         let mut event = event_stream.next().fuse();
 
         select! {
-            _ = delay => return Ok(keypad_state),
+            _ = delay => { keypad_listener.send(Clear).await.unwrap(); },
             maybe_event = event => {
                 match maybe_event {
                     Some(Ok(Key(key))) => {
                         if key.kind == KeyEventKind::Press {
-
                             match key.code {
-                                KeyCode::Char('p') => return Err(Quit),
+                                KeyCode::Char('p') => { keypad_listener.send(Quit).await.unwrap(); },
 
-                                KeyCode::Char('1') => { keypad_state.fill(false); keypad_state[0x1] = true },
-                                KeyCode::Char('2') => { keypad_state.fill(false); keypad_state[0x2] = true },
-                                KeyCode::Char('3') => { keypad_state.fill(false); keypad_state[0x3] = true },
-                                KeyCode::Char('4') => { keypad_state.fill(false); keypad_state[0xC] = true },
+                                KeyCode::Char('1') => { keypad_listener.send(KeypadEvent::Keypad(0x1u8)).await.unwrap(); },
+                                KeyCode::Char('2') => { keypad_listener.send(KeypadEvent::Keypad(0x2u8)).await.unwrap(); },
+                                KeyCode::Char('3') => { keypad_listener.send(KeypadEvent::Keypad(0x3u8)).await.unwrap(); },
+                                KeyCode::Char('4') => { keypad_listener.send(KeypadEvent::Keypad(0xCu8)).await.unwrap(); },
 
-                                KeyCode::Char('q') => { keypad_state.fill(false); keypad_state[0x4] = true },
-                                KeyCode::Char('w') => { keypad_state.fill(false); keypad_state[0x5] = true },
-                                KeyCode::Char('e') => { keypad_state.fill(false); keypad_state[0x6] = true },
-                                KeyCode::Char('r') => { keypad_state.fill(false); keypad_state[0xD] = true },
+                                KeyCode::Char('q') => { keypad_listener.send(KeypadEvent::Keypad(0x4u8)).await.unwrap(); },
+                                KeyCode::Char('w') => { keypad_listener.send(KeypadEvent::Keypad(0x5u8)).await.unwrap(); },
+                                KeyCode::Char('e') => { keypad_listener.send(KeypadEvent::Keypad(0x6u8)).await.unwrap(); },
+                                KeyCode::Char('r') => { keypad_listener.send(KeypadEvent::Keypad(0xDu8)).await.unwrap(); },
 
-                                KeyCode::Char('a') => { keypad_state.fill(false); keypad_state[0x7] = true },
-                                KeyCode::Char('s') => { keypad_state.fill(false); keypad_state[0x8] = true },
-                                KeyCode::Char('d') => { keypad_state.fill(false); keypad_state[0x9] = true },
-                                KeyCode::Char('f') => { keypad_state.fill(false); keypad_state[0xE] = true },
+                                KeyCode::Char('a') => { keypad_listener.send(KeypadEvent::Keypad(0x7u8)).await.unwrap(); },
+                                KeyCode::Char('s') => { keypad_listener.send(KeypadEvent::Keypad(0x8u8)).await.unwrap(); },
+                                KeyCode::Char('d') => { keypad_listener.send(KeypadEvent::Keypad(0x9u8)).await.unwrap(); },
+                                KeyCode::Char('f') => { keypad_listener.send(KeypadEvent::Keypad(0xEu8)).await.unwrap(); },
 
-                                KeyCode::Char('z') => { keypad_state.fill(false); keypad_state[0xA] = true },
-                                KeyCode::Char('x') => { keypad_state.fill(false); keypad_state[0x0] = true },
-                                KeyCode::Char('c') => { keypad_state.fill(false); keypad_state[0xB] = true },
-                                KeyCode::Char('v') => { keypad_state.fill(false); keypad_state[0xF] = true },
-                                _ => {}
+                                KeyCode::Char('z') => { keypad_listener.send(KeypadEvent::Keypad(0xAu8)).await.unwrap(); },
+                                KeyCode::Char('x') => { keypad_listener.send(KeypadEvent::Keypad(0x0u8)).await.unwrap(); },
+                                KeyCode::Char('c') => { keypad_listener.send(KeypadEvent::Keypad(0xBu8)).await.unwrap(); },
+                                KeyCode::Char('v') => { keypad_listener.send(KeypadEvent::Keypad(0xFu8)).await.unwrap(); },
+                                _ => {},
                             }
                         }
                     }
-                    Some(Err(e)) => return Err(EmulationError::UnknownInput),
-                    _ => return Ok([false; 16]),
+                    _ => {},
                 }
             }
-        }
-        remaining_duration = remaining_duration.saturating_sub(last_tick.elapsed());
-        if remaining_duration.as_millis() == 0 {
-            return Ok(keypad_state);
         }
     }
 }
 
-pub(crate) fn read_keypad_state(
-    event_stream: &mut EventStream,
-) -> Result<[bool; 16], EmulationError> {
-    async_std::task::block_on(async_read_keypad_state(
-        event_stream,
-        Duration::from_millis(1),
-    ))
+pub(crate) fn spawn_keypad_handler(keypad_listener: Sender<KeypadEvent>) -> JoinHandle<()> {
+    async_std::task::spawn(async_listen_keypad_state(keypad_listener))
+}
+
+pub(crate) enum KeypadEvent {
+    Clear,
+    Keypad(u8),
+    Quit,
 }

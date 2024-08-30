@@ -24,7 +24,7 @@ use std::time::Duration;
 pub(crate) async fn async_listen_keypad_state(keypad_listener: Sender<KeypadEvent>) {
     let mut event_stream = EventStream::new();
     loop {
-        let mut delay = Delay::new(Duration::from_millis(500)).fuse();
+        let mut delay = Delay::new(Duration::from_millis(1_000)).fuse();
 
         let mut event = event_stream.next().fuse();
 

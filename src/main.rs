@@ -41,12 +41,13 @@ fn main() -> io::Result<()> {
     let mut last_tick = Instant::now();
 
     // 60hz
-    let tick_rate = Duration::from_millis(5);
+    let tick_rate = Duration::from_millis(16);
 
     let mut vm = Chip8::default();
 
     vm.load(contents);
     let mut keypad_value: Option<u8> = None;
+
     loop {
         // perform one cycle
         match vm_receiver.try_recv() {
